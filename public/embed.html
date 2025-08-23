@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Chatbot Embed</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    html, body { height: 100%; margin: 0; font-family: system-ui, Arial, sans-serif; }
+    .chat { display: flex; flex-direction: column; height: 100%; background: #f7f7f7; }
+    .head { display: flex; align-items: center; gap: 10px; padding: 10px; background: #fff; border-bottom: 1px solid #eee; }
+    .avatar { width: 32px; height: 32px; border-radius: 8px; background: #ddd; }
+    .messages { flex: 1; overflow: auto; padding: 12px; }
+    .bubble { display: inline-block; padding: 10px 12px; border-radius: 12px; margin: 6px 0; max-width: 85%; line-height: 1.4; }
+    .bot { background: #ffffff; border: 1px solid #e6e6e6; color: #111; }
+    .user { background: #0b84ff; color: #fff; align-self: flex-end; }
+    .row { display: flex; gap: 8px; padding: 10px; background: #fff; border-top: 1px solid #eee; }
+    .row input { flex: 1; padding: 10px; border-radius: 10px; border: 1px solid #ddd; outline: none; }
+    .row button { padding: 10px 14px; border-radius: 10px; border: none; background: #0b84ff; color: #fff; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <div class="chat">
+    <div class="head">
+      <div class="avatar" id="avatar"></div>
+      <div>
+        <div id="botName" style="font-weight:600">ChatBot</div>
+        <div id="welcomeSmall" style="font-size:12px;color:#666"></div>
+      </div>
+    </div>
+    <div id="messages" class="messages"></div>
+    <div class="row">
+      <input id="in" placeholder="Write a message..." />
+      <button id="send">Send</button>
+    </div>
+  </div>
+
+  <script>
+    // Get botId from the iframe URL
+    const params = new URLSearchParams(location.search);
+    const botId = params.get('botId');
+
+    const messages = document.getElementById('messages');
+    const input = document.getElementById('in');
+    const sendBtn = document.getElementById('send');
+
+    function addMsg(text, cls) {
+      const d = document.createElement('div');
+      d.className = 'bubble ' + (cls || 'bot');
+      d.textContent = text;
+      const wrap = document.createElement('div');
+      wrap.style.display = 'flex';
+      wrap.style.flexDirection = 'column';
+      wrap.appendChild(d);
+      messages.appendChild(wrap);
+      messages.scrollTop = messages.scrollHeight;
+    }
+
+    // Resolve API base to the same origin this page was served from
+    const API_BASE = new URL(location.href).origin;
+
+    // Load and show bot settings
+    async function init() {
+      if (!botId) {
+        addMsg('Error: botId missing in URL (expected ?botId=...)', 'bot');
+        return;
+      }
+      try {
+        const res = await fetch(`${API_BASE}/api/bot/${encodeURIComponent(botId)}/settings`);
+        if (!res.ok) throw new Error('settings fetch failed');
+        const settings = await res.json();
+
+        document.getElementById('botName').textContent = settings.name || 'ChatBot';
+        document.getElementById('welcomeSmall').textContent = settings.welcome || '';
+        const av = document.getElementById('avatar');
+        if (settings.avatar) {
+          av.style.backgroundImage = `url(${settings.avatar})`;
+          av.style.backgroundSize = 'cover';
+        }
+        addMsg(settings.welcome || 'u nigga', 'bot');
+      } catch (e) {
+        addMsg('Could not load bot settings.', 'bot');
+      }
+    }
+
+    async function sendMessage(txt) {
+      addMsg(txt, 'user');
+      // show typing
+      addMsg('...', 'bot');
+      try {
+        const res = await fetch(`${API_BASE}/api/message`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ botId, message: txt })
+        });
+        const data = await res.json();
+        // remove '...' (last bubble)
+        const bubbles = messages.querySelectorAll('.bubble');
+        if (bubbles.length) bubbles[bubbles.length - 1].remove();
+        addMsg(data.reply || 'No reply', 'bot');
+      } catch (err) {
+        const bubbles = messages.querySelectorAll('.bubble');
+        if (bubbles.length) bubbles[bubbles.length - 1].remove();
+        addMsg('Error contacting server.', 'bot');
+      }
+    }
+
+    sendBtn.addEventListener('click', () => {
+      const v = input.value.trim();
+      if (!v) return;
+      input.value = '';
+      sendMessage(v);
+    });
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') sendBtn.click();
+    });
+
+    init();
+  </script>
+</body>
+</html>
