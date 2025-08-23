@@ -215,5 +215,7 @@ app.get('/widget-loader.js', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'widget-loader.js'));
 });
 
-// Start server
-app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
+// DO NOT start server with app.listen() on Vercel!
+// Instead export app for Vercel serverless function:
+module.exports = app;
+
