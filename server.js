@@ -1,4 +1,6 @@
 // server.js
+require('dotenv').config();  // <-- Load .env file
+
 const express = require('express');
 const cors = require('cors');
 const multer = require('multer');
