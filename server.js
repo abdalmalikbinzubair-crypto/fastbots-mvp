@@ -151,6 +151,11 @@ async function handleChat(botId, message) {
     prompt = `Context: ${foundText}\n\nUser: ${message}\nBot:`;
   }
 
+  if (!process.env.HF_API_KEY) {
+    console.error("❌ Missing HF_API_KEY! Check your .env or Render environment variables.");
+    return { reply: "AI is unavailable right now (missing API key).", quickReplies: bot.quickReplies };
+  }
+
   try {
     const hfRes = await axios.post(
       'https://api-inference.huggingface.co/models/google/flan-t5-small',
