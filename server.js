@@ -1,6 +1,3 @@
-// server.js
-require('dotenv').config();  // <-- Load .env file
-
 const express = require('express');
 const cors = require('cors');
 const multer = require('multer');
@@ -151,8 +148,10 @@ async function handleChat(botId, message) {
     prompt = `Context: ${foundText}\n\nUser: ${message}\nBot:`;
   }
 
-  if (!process.env.HF_API_KEY) {
-    console.error("❌ Missing HF_API_KEY! Check your .env or Render environment variables.");
+  // ✅ Only use secrets/environment variables
+  const hfKey = process.env.HF_API_KEY; // Must be set in GitHub Actions or hosting environment
+  if (!hfKey) {
+    console.error("❌ Missing HF_API_KEY! Set it as a secret in GitHub Actions or your hosting environment.");
     return { reply: "AI is unavailable right now (missing API key).", quickReplies: bot.quickReplies };
   }
 
@@ -160,7 +159,7 @@ async function handleChat(botId, message) {
     const hfRes = await axios.post(
       'https://api-inference.huggingface.co/models/google/flan-t5-small',
       { inputs: prompt },
-      { headers: { Authorization: `Bearer ${process.env.HF_API_KEY}` } }
+      { headers: { Authorization: `Bearer ${hfKey}` } }
     );
 
     const reply = hfRes.data[0]?.generated_text || "I couldn't generate a reply.";
