@@ -157,7 +157,7 @@ async function handleChat(botId, message) {
 
   try {
     const hfRes = await axios.post(
-      'https://api-inference.huggingface.co/models/google/flan-t5-small',
+      'https://api-inference.huggingface.co/models/google/flan-t5-base',
       { inputs: prompt },
       { headers: { Authorization: `Bearer ${hfKey}` } }
     );
