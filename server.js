@@ -9,18 +9,15 @@ const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
 const Database = require('better-sqlite3');
 
-// Vercel automatically assigns a port, so no need to define PORT
 const app = express();
 
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname, '..', 'public'))); // Serve files from public
+app.use(express.static(path.join(__dirname, '..', 'public')));
 
-// Setup uploads directory
 const UPLOAD_DIR = path.join(__dirname, '..', 'uploads');
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR);
 
-// Setup database
 const dbPath = path.join(__dirname, '..', 'bots.db');
 const db = new Database(dbPath);
 db.exec(`
@@ -44,7 +41,7 @@ db.exec(`
 
 const upload = multer({ dest: UPLOAD_DIR });
 
-// Helper functions
+// === Helper functions ===
 function createBotRecord({ id, name, avatar = '', themeColor = '#4CAF50', welcome = 'Hi! How can I help?', quickReplies = [] }) {
   const stmt = db.prepare(`INSERT INTO bots (id,name,avatar,themeColor,welcome,quickReplies,createdAt) VALUES (?,?,?,?,?,?,?)`);
   stmt.run(id, name, avatar, themeColor, welcome, JSON.stringify(quickReplies), Date.now());
@@ -65,10 +62,10 @@ function getBotDocuments(botId) {
   return db.prepare('SELECT * FROM documents WHERE botId = ?').all(botId);
 }
 
-// Health check
+// === Health check ===
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 
-// Create bot
+// === Bot routes ===
 app.post('/api/bot', (req, res) => {
   const { name } = req.body;
   if (!name) return res.status(400).json({ error: 'name required' });
@@ -77,7 +74,6 @@ app.post('/api/bot', (req, res) => {
   return res.json({ botId: id });
 });
 
-// Upload document
 app.post('/api/bot/:botId/upload', upload.single('file'), async (req, res) => {
   try {
     const botId = req.params.botId;
@@ -104,7 +100,6 @@ app.post('/api/bot/:botId/upload', upload.single('file'), async (req, res) => {
   }
 });
 
-// Bot settings
 app.get('/api/bot/:botId/settings', (req, res) => {
   const bot = getBot(req.params.botId);
   if (!bot) return res.status(404).json({ error: 'bot not found' });
@@ -118,7 +113,7 @@ app.get('/api/bot/:botId/settings', (req, res) => {
   });
 });
 
-// Handle messages
+// === Chat handler ===
 async function handleChat(botId, message) {
   const bot = getBot(botId);
   if (!bot) throw new Error('bot not found');
@@ -141,9 +136,24 @@ async function handleChat(botId, message) {
     return { reply: ans || "I found something but can't make a full answer.", quickReplies: bot.quickReplies };
   }
 
+  // === NEW: fallback to Hugging Face free API ===
+  try {
+    const hfRes = await axios.post(
+      'https://api-inference.huggingface.co/models/google/flan-t5-small',
+      { inputs: message },
+      { headers: { Authorization: `Bearer ${process.env.HF_API_KEY}` } }
+    );
+    if (hfRes.data && hfRes.data[0] && hfRes.data[0].generated_text) {
+      return { reply: hfRes.data[0].generated_text, quickReplies: bot.quickReplies };
+    }
+  } catch (e) {
+    console.error("HF API error:", e.message);
+  }
+
   return { reply: "Sorry, I don't know the answer to that yet.", quickReplies: bot.quickReplies };
 }
 
+// Chat endpoints
 app.post('/api/bot/:botId/chat', async (req, res) => {
   try {
     const result = await handleChat(req.params.botId, req.body.message);
@@ -181,5 +191,4 @@ app.post('/api/bot/:botId/settings', (req, res) => {
   return res.json({ status: 'ok' });
 });
 
-// Export for Vercel
 module.exports = app;
