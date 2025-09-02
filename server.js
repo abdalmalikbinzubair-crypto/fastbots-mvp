@@ -1,4 +1,4 @@
-// api/server.js
+// server.js
 const express = require('express');
 const cors = require('cors');
 const multer = require('multer');
@@ -13,13 +13,13 @@ const app = express();
 
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname, '..', 'public')));
+app.use(express.static(path.join(__dirname, 'public')));
 
-const UPLOAD_DIR = path.join(__dirname, '..', 'uploads');
+const UPLOAD_DIR = path.join(__dirname, 'uploads');
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR);
 
-// SQLite setup
-const dbPath = path.join(__dirname, '..', 'bots.db');
+// === SQLite setup ===
+const dbPath = path.join(__dirname, 'bots.db');
 const db = new Database(dbPath);
 db.exec(`
   CREATE TABLE IF NOT EXISTS bots (
@@ -42,25 +42,31 @@ db.exec(`
 
 const upload = multer({ dest: UPLOAD_DIR });
 
+// === Helper functions ===
 function createBotRecord({ id, name, avatar = '', themeColor = '#4CAF50', welcome = 'Hi! How can I help?', quickReplies = [] }) {
   db.prepare(`INSERT INTO bots (id,name,avatar,themeColor,welcome,quickReplies,createdAt) VALUES (?,?,?,?,?,?,?)`)
     .run(id, name, avatar, themeColor, welcome, JSON.stringify(quickReplies), Date.now());
 }
+
 function getBot(id) {
   const row = db.prepare('SELECT * FROM bots WHERE id = ?').get(id);
   if (!row) return null;
   row.quickReplies = row.quickReplies ? JSON.parse(row.quickReplies) : [];
   return row;
 }
+
 function saveDocument(botId, filename, text) {
   const id = uuidv4();
   db.prepare(`INSERT INTO documents (id,botId,filename,text,addedAt) VALUES (?,?,?,?,?)`)
     .run(id, botId, filename, text, Date.now());
   return id;
 }
+
 function getBotDocuments(botId) {
   return db.prepare('SELECT * FROM documents WHERE botId = ?').all(botId);
 }
+
+// === Routes ===
 
 // Health check
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
@@ -70,7 +76,14 @@ app.post('/api/bot', (req, res) => {
   const { name } = req.body;
   if (!name) return res.status(400).json({ error: 'name required' });
   const id = uuidv4();
-  createBotRecord({ id, name, avatar: req.body.avatar, themeColor: req.body.themeColor, welcome: req.body.welcome, quickReplies: req.body.quickReplies });
+  createBotRecord({
+    id,
+    name,
+    avatar: req.body.avatar,
+    themeColor: req.body.themeColor,
+    welcome: req.body.welcome,
+    quickReplies: req.body.quickReplies
+  });
   return res.json({ botId: id });
 });
 
@@ -163,6 +176,7 @@ app.post('/api/message', async (req, res) => {
   }
 });
 
+// Update bot settings
 app.post('/api/bot/:botId/settings', (req, res) => {
   const botId = req.params.botId;
   const bot = getBot(botId);
@@ -182,7 +196,7 @@ app.post('/api/bot/:botId/settings', (req, res) => {
 
 // === Serve Embed Widget ===
 app.get('/embed.html', (req, res) => {
-  res.sendFile(path.join(__dirname, '..', 'public', 'embed.html'));
+  res.sendFile(path.join(__dirname, 'public', 'embed.html'));
 });
 
 // Start the server
@@ -190,4 +204,3 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`✅ Server running on port ${PORT}`);
 });
-
