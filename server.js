@@ -1,4 +1,4 @@
-// api/index.js
+// api/server.js
 const express = require('express');
 const cors = require('cors');
 const multer = require('multer');
@@ -180,7 +180,11 @@ app.post('/api/bot/:botId/settings', (req, res) => {
   return res.json({ status: 'ok' });
 });
 
-module.exports = app;
+// === Serve Embed Widget ===
+app.get('/embed.html', (req, res) => {
+  res.sendFile(path.join(__dirname, '..', 'public', 'embed.html'));
+});
+
 // Start the server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
