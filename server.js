@@ -157,8 +157,7 @@ async function handleChat(botId, message) {
 
   try {
     const hfRes = await axios.post(
-      'https://api-inference.huggingface.co/pipeline/text2text-generation/google/flan-t5-small
-',
+      'https://api-inference.huggingface.co/pipeline/text2text-generation/google/flan-t5-small',
       { inputs: prompt },
       { headers: { Authorization: `Bearer ${hfKey}` } }
     );
@@ -211,4 +210,5 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`✅ Server running on port ${PORT}`);
 });
+
 
