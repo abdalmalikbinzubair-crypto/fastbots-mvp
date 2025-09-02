@@ -18,6 +18,7 @@ app.use(express.static(path.join(__dirname, '..', 'public')));
 const UPLOAD_DIR = path.join(__dirname, '..', 'uploads');
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR);
 
+// SQLite setup
 const dbPath = path.join(__dirname, '..', 'bots.db');
 const db = new Database(dbPath);
 db.exec(`
@@ -41,10 +42,9 @@ db.exec(`
 
 const upload = multer({ dest: UPLOAD_DIR });
 
-// === Helper functions ===
 function createBotRecord({ id, name, avatar = '', themeColor = '#4CAF50', welcome = 'Hi! How can I help?', quickReplies = [] }) {
-  const stmt = db.prepare(`INSERT INTO bots (id,name,avatar,themeColor,welcome,quickReplies,createdAt) VALUES (?,?,?,?,?,?,?)`);
-  stmt.run(id, name, avatar, themeColor, welcome, JSON.stringify(quickReplies), Date.now());
+  db.prepare(`INSERT INTO bots (id,name,avatar,themeColor,welcome,quickReplies,createdAt) VALUES (?,?,?,?,?,?,?)`)
+    .run(id, name, avatar, themeColor, welcome, JSON.stringify(quickReplies), Date.now());
 }
 function getBot(id) {
   const row = db.prepare('SELECT * FROM bots WHERE id = ?').get(id);
@@ -62,10 +62,10 @@ function getBotDocuments(botId) {
   return db.prepare('SELECT * FROM documents WHERE botId = ?').all(botId);
 }
 
-// === Health check ===
+// Health check
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 
-// === Bot routes ===
+// Create bot
 app.post('/api/bot', (req, res) => {
   const { name } = req.body;
   if (!name) return res.status(400).json({ error: 'name required' });
@@ -74,6 +74,7 @@ app.post('/api/bot', (req, res) => {
   return res.json({ botId: id });
 });
 
+// Upload document
 app.post('/api/bot/:botId/upload', upload.single('file'), async (req, res) => {
   try {
     const botId = req.params.botId;
@@ -100,6 +101,7 @@ app.post('/api/bot/:botId/upload', upload.single('file'), async (req, res) => {
   }
 });
 
+// Bot settings
 app.get('/api/bot/:botId/settings', (req, res) => {
   const bot = getBot(req.params.botId);
   if (!bot) return res.status(404).json({ error: 'bot not found' });
@@ -113,11 +115,12 @@ app.get('/api/bot/:botId/settings', (req, res) => {
   });
 });
 
-// === Chat handler ===
+// === Hugging Face Chat Handler ===
 async function handleChat(botId, message) {
   const bot = getBot(botId);
   if (!bot) throw new Error('bot not found');
 
+  // Try context lookup
   const docs = getBotDocuments(botId);
   let foundText = '';
   for (const d of docs) {
@@ -127,42 +130,28 @@ async function handleChat(botId, message) {
     }
   }
 
-  const lower = message.toLowerCase();
-  if (lower.includes('hello') || lower.includes('hi')) {
-    return { reply: bot.welcome, quickReplies: bot.quickReplies };
-  }
+  // If we found related docs, prepend context
+  let prompt = message;
   if (foundText) {
-    const ans = foundText.split('\n').slice(0, 4).join('\n');
-    return { reply: ans || "I found something but can't make a full answer.", quickReplies: bot.quickReplies };
+    prompt = `Context: ${foundText}\n\nUser: ${message}\nBot:`;
   }
 
-  // === NEW: fallback to Hugging Face free API ===
   try {
     const hfRes = await axios.post(
       'https://api-inference.huggingface.co/models/google/flan-t5-small',
-      { inputs: message },
+      { inputs: prompt },
       { headers: { Authorization: `Bearer ${process.env.HF_API_KEY}` } }
     );
-    if (hfRes.data && hfRes.data[0] && hfRes.data[0].generated_text) {
-      return { reply: hfRes.data[0].generated_text, quickReplies: bot.quickReplies };
-    }
-  } catch (e) {
-    console.error("HF API error:", e.message);
-  }
 
-  return { reply: "Sorry, I don't know the answer to that yet.", quickReplies: bot.quickReplies };
+    const reply = hfRes.data[0]?.generated_text || "I couldn't generate a reply.";
+    return { reply, quickReplies: bot.quickReplies };
+  } catch (err) {
+    console.error("HF API error", err.response?.data || err.message);
+    return { reply: "Sorry, I had an issue connecting to AI.", quickReplies: bot.quickReplies };
+  }
 }
 
-// Chat endpoints
-app.post('/api/bot/:botId/chat', async (req, res) => {
-  try {
-    const result = await handleChat(req.params.botId, req.body.message);
-    return res.json(result);
-  } catch (err) {
-    return res.status(500).json({ error: err.message });
-  }
-});
-
+// Chat API
 app.post('/api/message', async (req, res) => {
   try {
     const { botId, message } = req.body;
